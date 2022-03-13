@@ -1,39 +1,47 @@
 #define NOT_MAIN 1
 #define PY_SSIZE_T_CLEAN
 
-#include "xdelta3.h"
 #include "xdelta3.c"
+#include "xdelta3.h"
 #include <Python.h>
 
 static PyObject *NoDeltaFound;
 static PyObject *XDeltaError;
 
-static PyObject * xdelta3_execute(PyObject *self, PyObject *args)
-{
+static PyObject *xdelta3_execute(PyObject *self, PyObject *args) {
   uint8_t *input_bytes = NULL, *source_bytes = NULL, *output_buf = NULL;
   Py_ssize_t source_len, input_len;
   int flags, action, result;
   Py_ssize_t output_size;
   size_t input_size, source_size, output_alloc;
 
-  if (!PyArg_ParseTuple(args, "y#y#ii", &input_bytes, &input_len, &source_bytes, &source_len, &flags, &action))
+  if (!PyArg_ParseTuple(args, "y#y#ii", &input_bytes, &input_len, &source_bytes,
+                        &source_len, &flags, &action))
     return NULL;
 
   source_size = (size_t)source_len;
   input_size = (size_t)input_len;
 
   if (action == 0) {
-    // if the output would be longer than the input itself, there's no point using delta encoding
+    // if the output would be longer than the input itself, there's no point
+    // using delta encoding
     output_alloc = input_size;
     output_buf = main_malloc(output_alloc);
     result = xd3_encode_memory(input_bytes, input_size, source_bytes, source_size,
-        output_buf, &output_size, output_alloc, flags);
+                          output_buf, &output_size, output_alloc, flags);
   } else {
-    // output shouldn't be bigger than the original plus the delta, but give a little leeway
-    output_alloc = (input_size * 2) + (source_size * 2);
+    // output shouldn't be bigger than the original plus the delta, but give a
+    // little leeway
+    output_alloc = input_size * 11 / 10 + source_size * 11 / 10;
     output_buf = main_malloc(output_alloc);
+  try_decode:
     result = xd3_decode_memory(input_bytes, input_size, source_bytes, source_size,
-        output_buf, &output_size, output_alloc, flags);
+                          output_buf, &output_size, output_alloc, flags);
+    if (result == ENOSPC) {
+      output_alloc *= 2;
+      output_buf = realloc(output_buf, output_alloc);
+      goto try_decode;
+    }
   }
 
   if (result == 0) {
@@ -42,43 +50,37 @@ static PyObject * xdelta3_execute(PyObject *self, PyObject *args)
     return ret;
   }
 
-  if(result == ENOSPC) {
+  if (result == ENOSPC) {
     if (action == 0) {
       // all is well, just not efficient delta could be found
-      PyErr_SetString(NoDeltaFound, "No delta found shorter than the input value");
+      PyErr_SetString(NoDeltaFound,
+                      "No delta found shorter than the input value");
     } else {
-      PyErr_SetString(XDeltaError, "Output of decoding delta longer than expected");
+      PyErr_SetString(XDeltaError,
+                      "Output of decoding delta longer than expected");
     }
   } else {
     char exc_str[80];
     sprintf(exc_str, "Error occur executing xdelta3: %s", xd3_strerror(result));
     PyErr_SetString(XDeltaError, exc_str);
-
   }
   main_free(output_buf);
   return NULL;
 }
 
-static PyObject * xdelta3_version(PyObject *self, PyObject *args)
-{
+static PyObject *xdelta3_version(PyObject *self, PyObject *args) {
   int result = main_version();
   PyObject *ret = Py_BuildValue("i", result);
   return ret;
 }
 
 static PyMethodDef xdelta3_methods[] = {
-  {"execute",  xdelta3_execute, METH_VARARGS, "xdelta3 encode or decode"},
-  {"version",  xdelta3_version, METH_VARARGS, "print xdelta3 version info"},
-  {NULL, NULL, 0, NULL}
-};
+    {"execute", xdelta3_execute, METH_VARARGS, "xdelta3 encode or decode"},
+    {"version", xdelta3_version, METH_VARARGS, "print xdelta3 version info"},
+    {NULL, NULL, 0, NULL}};
 
-static struct PyModuleDef xdelta3_module = {
-  PyModuleDef_HEAD_INIT,
-  "_xdelta3",
-  NULL,
-  0,
-  xdelta3_methods
-};
+static struct PyModuleDef xdelta3_module = {PyModuleDef_HEAD_INIT, "_xdelta3",
+                                            NULL, 0, xdelta3_methods};
 
 PyMODINIT_FUNC PyInit__xdelta3(void) {
   PyObject *m;

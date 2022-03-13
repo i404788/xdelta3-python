@@ -2,4 +2,4 @@ from distutils.version import StrictVersion
 
 __all__ = ['VERSION']
 
-VERSION = StrictVersion('0.0.6a1')
+VERSION = StrictVersion('0.0.7a1')

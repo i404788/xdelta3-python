@@ -3,7 +3,7 @@ from pathlib import Path
 from setuptools import setup, Extension
 
 THIS_DIR = Path(__file__).resolve().parent
-long_description = THIS_DIR.joinpath('README.rst').read_text()
+long_description = THIS_DIR.joinpath('README.md').read_text()
 
 # avoid loading the package before requirements are installed:
 version = SourceFileLoader('version', 'xdelta3/version.py').load_module()
